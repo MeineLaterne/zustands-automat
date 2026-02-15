@@ -1,239 +1,331 @@
+/**
+ * State Machine Library
+ * 
+ * A lightweight, type-safe state machine implementation with support for:
+ * - Declarative state configuration
+ * - Nested state machines
+ * - Guard conditions on transitions
+ * - Lifecycle hooks (onEnter, onStay, onExit)
+ */
 
-export class TransitionBuilder<T> {
-  from: StateBuilder<T>;
-  to: StateBuilder<T>;
-  guardCondition?: (context: T) => boolean;
+export type StateHandler<T> = (context: T) => void;
 
-  constructor(from: StateBuilder<T>, to: StateBuilder<T>) {
-    this.from = from;
-    this.to = to;
-  }
-
-  when(guardCondition: (context: T) => boolean) {
-    this.guardCondition = guardCondition;
-    return this.from;
-  }
+export interface TransitionConfig<T> {
+  target: string;
+  guard?: (context: T) => boolean;
 }
 
-export type Transition<T> = {
+export interface StateConfig<T> {
+  id: string;
+  onEnter?: StateHandler<T>;
+  onStay?: StateHandler<T>;
+  onExit?: StateHandler<T>;
+  transitions?: TransitionConfig<T>[];
+  states?: StateConfig<T>[]; // Nested states for hierarchical state machines
+}
+
+export interface Transition<T> {
   target: State<T>;
   guard?: (context: T) => boolean;
-};
-
-export type StateProps<T> = {
-  id: string;
-  transitions: TransitionBuilder<T>[];
-  enterHandler?: (context: T) => void;
-  stayHandler?: (context: T) => void;
-  exitHandler?: (context: T) => void;
-  nestedStateMachine?: StateMachine<T>;
-};
+}
 
 export class State<T> {
   id: string;
-  transitionBuilders: TransitionBuilder<T>[];
+  enterHandler?: StateHandler<T>;
+  stayHandler?: StateHandler<T>;
+  exitHandler?: StateHandler<T>;
+  transitionConfigs: TransitionConfig<T>[];
   transitions: Map<string, Transition<T>> = new Map();
-  enterHandler?: (context: T) => void;
-  stayHandler?: (context: T) => void;
-  exitHandler?: (context: T) => void;
   nestedStateMachine?: StateMachine<T>;
+  enteredAt: number = 0;
 
-  constructor({ id, transitions, enterHandler, stayHandler, exitHandler, nestedStateMachine }: StateProps<T>) {
+  constructor(
+    id: string,
+    enterHandler?: StateHandler<T>,
+    stayHandler?: StateHandler<T>,
+    exitHandler?: StateHandler<T>,
+    transitionConfigs: TransitionConfig<T>[] = [],
+    nestedStateMachine?: StateMachine<T>
+  ) {
     this.id = id;
-    this.transitionBuilders = transitions;
     this.enterHandler = enterHandler;
     this.stayHandler = stayHandler;
     this.exitHandler = exitHandler;
+    this.transitionConfigs = transitionConfigs;
     this.nestedStateMachine = nestedStateMachine;
   }
 
-  init(machine: StateMachine<T>) {
+  init(machine: StateMachine<T>): void {
     // Resolve transition references
-    this.transitionBuilders.forEach(tb => {
-      const targetState = machine.states.get(tb.to.id);
+    this.transitionConfigs.forEach(tc => {
+      const targetState = machine.states.get(tc.target);
       if (targetState) {
         this.transitions.set(targetState.id, {
           target: targetState,
-          guard: tb.guardCondition
+          guard: tc.guard
         });
+      } else {
+        console.warn(`State "${this.id}": transition target "${tc.target}" not found`);
       }
     });
+
+    // Initialize nested state machine if present
+    if (this.nestedStateMachine) {
+      this.nestedStateMachine.init();
+    }
   }
 
-  enter(context: T) {
-    this.enterHandler?.(context);
-    // TODO: nested machines
+  enter(context: T): void {
+    this.enteredAt = Date.now();
+    if (this.enterHandler) {
+      this.enterHandler(context);
+    }
+    // Enter nested machine's initial state
+    if (this.nestedStateMachine) {
+      this.nestedStateMachine.enter(context);
+    }
   }
 
   stay(context: T): State<T> {
-    // check transitions
+    // Check transitions first (transitions have priority)
     for (const [_, transition] of this.transitions) {
       if (!transition.guard || transition.guard(context)) {
-        // transition to next state
         return transition.target;
       }
     }
 
-    // execute handler
-    this.stayHandler?.(context);
+    // Execute stay logic
+    if (this.stayHandler) {
+      this.stayHandler(context);
+    }
 
-    // nested machine
-    this.nestedStateMachine?.tick();
+    // Update nested state machine
+    if (this.nestedStateMachine) {
+      this.nestedStateMachine.tick();
+      
+      // Check if nested machine wants to transition out
+      // (This could be extended to support nested machine completion events)
+    }
 
-    // stay in this state
+    // Stay in this state
     return this;
   }
 
-  exit(context: T) {
-    this.exitHandler?.(context);
-    // TODO: nested machines
+  exit(context: T): void {
+    if (this.exitHandler) {
+      this.exitHandler(context);
+    }
+    // Exit nested machine's current state
+    if (this.nestedStateMachine) {
+      this.nestedStateMachine.exit();
+    }
+  }
+
+  getTimeInState(): number {
+    return (Date.now() - this.enteredAt) / 1000;
   }
 }
 
-export class StateBuilder<T> {
-  id: string;
-  private _transitions: TransitionBuilder<T>[] = [];
-  private _enterHandler?: (context: T) => void;
-  private _stayHandler?: (context: T) => void;
-  private _exitHandler?: (context: T) => void;
-  private _nestedStateMachine?: StateMachine<T>;
-
-  constructor(id: string) {
-    this.id = id;
-  }
-
-  onEnter(handler: (context: T) => void): StateBuilder<T> {
-    this._enterHandler = handler;
-    return this;
-  }
-
-  onStay(handler: (context: T) => void): StateBuilder<T> {
-    this._stayHandler = handler;
-    return this;
-  }
-
-  onExit(handler: (context: T) => void): StateBuilder<T> {
-    this._exitHandler = handler;
-    return this;
-  }
-
-  to(targetStateBuilder: StateBuilder<T>): TransitionBuilder<T> {
-    const transition = new TransitionBuilder(this, targetStateBuilder);
-    this._transitions.push(transition);
-    return transition;
-  }
-
-  nest(subMachine: StateMachine<T>): StateBuilder<T> {
-    this._nestedStateMachine = subMachine;
-    return this;
-  }
-
-  build(): State<T> {
-    return new State({
-      id: this.id,
-      enterHandler: this._enterHandler,
-      stayHandler: this._stayHandler,
-      exitHandler: this._exitHandler,
-      transitions: this._transitions,
-      nestedStateMachine: this._nestedStateMachine
-    });
-  }
+export interface StateHistoryEntry {
+  from: string | null;
+  to: string;
+  timestamp: number;
 }
 
 export class StateMachine<T> {
-  private _states: Map<string, State<T>> = new Map();
-  private _currentState: State<T> | null = null;
-  private _context: T | null = null;
-  private _initialState?: State<T>;
+  states: Map<string, State<T>> = new Map();
+  currentState: State<T> | null = null;
+  initialState: State<T> | null = null;
+  context: T | null = null;
+  stateHistory: StateHistoryEntry[] = [];
+  maxHistorySize: number = 50;
 
-  set initialState(value: State<T> | undefined) {
-    this._initialState = value;
+  addState(state: State<T>): void {
+    this.states.set(state.id, state);
   }
 
-  get states(): Map<string, State<T>> {
-    return this._states;
+  setInitialState(stateId: string): void {
+    const state = this.states.get(stateId);
+    if (state) {
+      this.initialState = state;
+    } else {
+      console.warn(`Initial state "${stateId}" not found`);
+    }
   }
 
-  get currentState() {
-    return this._currentState;
+  init(): void {
+    // Initialize all states (resolve transitions)
+    this.states.forEach(state => state.init(this));
   }
 
-  addState(key: string, state: State<T>) {
-    this._states.set(key, state);
+  start(context: T): void {
+    this.context = context;
+    if (this.initialState) {
+      this.setCurrentState(this.initialState);
+    } else {
+      console.warn('No initial state set for state machine');
+    }
   }
 
-  initStates() {
-    this._states.forEach(state => state.init(this));
+  enter(context: T): void {
+    this.context = context;
+    if (this.initialState) {
+      this.currentState = this.initialState;
+      this.initialState.enter(context);
+      this.recordTransition(null, this.initialState.id);
+    }
   }
 
-  setCurrentState(state: State<T>) {
-    if (this._context === null) {
+  setCurrentState(state: State<T>): void {
+    if (this.context === null) {
+      console.warn('Cannot set current state: context is null');
       return;
     }
-    
-    this._currentState?.exit(this._context)
-    
-    this._currentState = state;
-    
-    state.enter(this._context);
-  }
 
-  start(context: T) {
-    this._context = context;
-    if (this._initialState) {
-      this.setCurrentState(this._initialState);
+    const previousState = this.currentState;
+
+    // Exit current state
+    if (this.currentState) {
+      this.currentState.exit(this.context);
+    }
+
+    // Transition to new state
+    this.currentState = state;
+
+    // Enter new state
+    if (state) {
+      state.enter(this.context);
+      this.recordTransition(previousState?.id ?? null, state.id);
     }
   }
 
-  tick() { 
-    if (this._currentState === null || this._context === null) {
+  tick(): void {
+    if (this.currentState === null || this.context === null) {
       return;
     }
-    
-    const nextState = this._currentState.stay(this._context);
-    
-    if (nextState !== this._currentState) {
+
+    const nextState = this.currentState.stay(this.context);
+
+    if (nextState !== this.currentState) {
       this.setCurrentState(nextState);
     }
   }
 
-  end() {}
+  exit(): void {
+    if (this.currentState && this.context) {
+      this.currentState.exit(this.context);
+      this.currentState = null;
+    }
+  }
+
+  getCurrentState(): State<T> | null {
+    return this.currentState;
+  }
+
+  getStateById(id: string): State<T> | undefined {
+    return this.states.get(id);
+  }
+
+  private recordTransition(from: string | null, to: string): void {
+    this.stateHistory.push({
+      from,
+      to,
+      timestamp: Date.now()
+    });
+
+    // Keep history size bounded
+    if (this.stateHistory.length > this.maxHistorySize) {
+      this.stateHistory.shift();
+    }
+  }
 }
 
 export class StateMachineBuilder<T> {
-  private _stateBuilders: Map<string, StateBuilder<T>> = new Map();
-  private _initialStateBuilder?: StateBuilder<T>;
+  private machine: StateMachine<T>;
+  private stateConfigs: StateConfig<T>[] = [];
+  private initialStateId?: string;
 
-  state(id: string): StateBuilder<T> {
-    if (!this._stateBuilders.has(id)) {
-      const builder = new StateBuilder<T>(id);
-      this._stateBuilders.set(id, builder);
-    }
-    return this._stateBuilders.get(id)!;
+  constructor() {
+    this.machine = new StateMachine<T>();
   }
 
-  initial(stateBuilder: StateBuilder<T>): StateMachineBuilder<T> {
-    this._initialStateBuilder = stateBuilder;
+  states(configs: StateConfig<T>[]): StateMachineBuilder<T> {
+    this.stateConfigs = configs;
+    return this;
+  }
+
+  initialState(stateId: string): StateMachineBuilder<T> {
+    this.initialStateId = stateId;
     return this;
   }
 
   build(): StateMachine<T> {
-    const machine = new StateMachine<T>();
-
-    // Build all states
-    this._stateBuilders.forEach((builder, id) => {
-      const state = builder.build();
-      machine.addState(id, state);
+    // Build states recursively
+    this.stateConfigs.forEach(config => {
+      this.buildStateFromConfig(config, this.machine);
     });
 
-    // Initialize all states (resolve transitions)
-    machine.initStates();
+    // Initialize state machine (resolve transitions)
+    this.machine.init();
 
     // Set initial state
-    if (this._initialStateBuilder) {
-      machine.initialState = machine.states.get(this._initialStateBuilder.id);
+    if (this.initialStateId) {
+      this.machine.setInitialState(this.initialStateId);
     }
 
-    return machine;
+    return this.machine;
   }
+
+  private buildStateFromConfig(config: StateConfig<T>, parentMachine: StateMachine<T>): void {
+    let nestedMachine: StateMachine<T> | undefined;
+
+    // If this state has nested states, create a nested state machine
+    if (config.states && config.states.length > 0) {
+      nestedMachine = new StateMachine<T>();
+      
+      // Build nested states
+      config.states.forEach(nestedConfig => {
+        this.buildStateFromConfig(nestedConfig, nestedMachine!);
+      });
+
+      // Set first nested state as initial state by default
+      const firstNestedState = nestedMachine.states.values().next().value;
+      if (firstNestedState) {
+        nestedMachine.initialState = firstNestedState;
+      }
+    }
+
+    // Create the state
+    const state = new State<T>(
+      config.id,
+      config.onEnter,
+      config.onStay,
+      config.onExit,
+      config.transitions || [],
+      nestedMachine
+    );
+
+    // Add to parent machine
+    parentMachine.addState(state);
+  }
+}
+
+/**
+ * Helper function to create a state machine builder
+ * @param context Optional context to pass to the builder
+ * @returns A new StateMachineBuilder instance
+ */
+export function createStateMachine<T>(): StateMachineBuilder<T> {
+  return new StateMachineBuilder<T>();
+}
+
+/**
+ * Type guard to check if a value is a StateConfig
+ */
+export function isStateConfig<T>(value: any): value is StateConfig<T> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof value.id === 'string'
+  );
 }

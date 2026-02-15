@@ -1,5 +1,7 @@
 # State Machine Library
 
+**This is work in progress**
+
 A lightweight, type-safe TypeScript state machine library. Built with a declarative API that makes complex hierarchical state machines easy to read and maintain.
 
 ## Features

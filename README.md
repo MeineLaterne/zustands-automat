@@ -28,7 +28,7 @@ class Player {
   stateMachine: StateMachine<GameContext>;
 
   constructor(context: GameContext) {
-    this.stateMachine = new StateMachineBuilder<GameContext>()
+    this.stateMachine = new StateMachineBuilder(context)
       .states([
         {
           id: 'idle',
@@ -52,8 +52,6 @@ class Player {
       ])
       .initialState('idle')
       .build();
-
-    this.stateMachine.start(context);
   }
 
   update(deltaTime: number) {

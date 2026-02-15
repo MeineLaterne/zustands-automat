@@ -133,12 +133,16 @@ export interface StateHistoryEntry {
 }
 
 export class StateMachine<T> {
+  context: T;
   states: Map<string, State<T>> = new Map();
   currentState: State<T> | null = null;
   initialState: State<T> | null = null;
-  context: T | null = null;
   stateHistory: StateHistoryEntry[] = [];
   maxHistorySize: number = 50;
+
+  constructor(context: T) {
+    this.context = context;
+  }
 
   addState(state: State<T>): void {
     this.states.set(state.id, state);
@@ -157,16 +161,7 @@ export class StateMachine<T> {
     // Initialize all states (resolve transitions)
     this.states.forEach(state => state.init(this));
   }
-
-  start(context: T): void {
-    this.context = context;
-    if (this.initialState) {
-      this.setCurrentState(this.initialState);
-    } else {
-      console.warn('No initial state set for state machine');
-    }
-  }
-
+  
   enter(context: T): void {
     this.context = context;
     if (this.initialState) {
@@ -245,8 +240,8 @@ export class StateMachineBuilder<T> {
   private stateConfigs: StateConfig<T>[] = [];
   private initialStateId?: string;
 
-  constructor() {
-    this.machine = new StateMachine<T>();
+  constructor(context: T) {
+    this.machine = new StateMachine<T>(context);
   }
 
   states(configs: StateConfig<T>[]): StateMachineBuilder<T> {
@@ -271,6 +266,7 @@ export class StateMachineBuilder<T> {
     // Set initial state
     if (this.initialStateId) {
       this.machine.setInitialState(this.initialStateId);
+      this.machine.setCurrentState(this.machine.getStateById(this.initialStateId)!);
     }
 
     return this.machine;
@@ -281,7 +277,7 @@ export class StateMachineBuilder<T> {
 
     // If this state has nested states, create a nested state machine
     if (config.states && config.states.length > 0) {
-      nestedMachine = new StateMachine<T>();
+      nestedMachine = new StateMachine<T>(this.machine.context);
       
       // Build nested states
       config.states.forEach(nestedConfig => {
@@ -315,8 +311,8 @@ export class StateMachineBuilder<T> {
  * @param context Optional context to pass to the builder
  * @returns A new StateMachineBuilder instance
  */
-export function createStateMachine<T>(): StateMachineBuilder<T> {
-  return new StateMachineBuilder<T>();
+export function createStateMachine<T>(context: T): StateMachineBuilder<T> {
+  return new StateMachineBuilder<T>(context);
 }
 
 /**

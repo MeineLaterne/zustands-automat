@@ -65,25 +65,20 @@ export class State<T> {
           guard: tc.guard
         });
       } else {
-        console.warn(`State "${this.id}": transition target "${tc.target}" not found`);
+        throw new Error(`Invalid transition target: ${tc.target}`);
       }
     });
 
     // Initialize nested state machine if present
-    if (this.nestedStateMachine) {
-      this.nestedStateMachine.init();
-    }
+    this.nestedStateMachine?.init();    
   }
 
   enter(context: T): void {
     this.enteredAt = Date.now();
-    if (this.enterHandler) {
-      this.enterHandler(context);
-    }
+    this.enterHandler?.(context);
+    
     // Enter nested machine's initial state
-    if (this.nestedStateMachine) {
-      this.nestedStateMachine.enter(context);
-    }
+    this.nestedStateMachine?.enter(context);    
   }
 
   stay(context: T): State<T> {
@@ -95,9 +90,7 @@ export class State<T> {
     }
 
     // Execute stay logic
-    if (this.stayHandler) {
-      this.stayHandler(context);
-    }
+    this.stayHandler?.(context);
 
     // Update nested state machine
     if (this.nestedStateMachine) {
@@ -112,13 +105,10 @@ export class State<T> {
   }
 
   exit(context: T): void {
-    if (this.exitHandler) {
-      this.exitHandler(context);
-    }
+    this.exitHandler?.(context);
+    
     // Exit nested machine's current state
-    if (this.nestedStateMachine) {
-      this.nestedStateMachine.exit();
-    }
+    this.nestedStateMachine?.exit();
   }
 
   getTimeInState(): number {
@@ -153,7 +143,7 @@ export class StateMachine<T> {
     if (state) {
       this.initialState = state;
     } else {
-      console.warn(`Initial state "${stateId}" not found`);
+      throw new Error(`Initial state "${stateId}" not found`);
     }
   }
 
@@ -180,10 +170,8 @@ export class StateMachine<T> {
     const previousState = this.currentState;
 
     // Exit current state
-    if (this.currentState) {
-      this.currentState.exit(this.context);
-    }
-
+    this.currentState?.exit(this.context);
+    
     // Transition to new state
     this.currentState = state;
 

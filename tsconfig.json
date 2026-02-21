@@ -1,9 +1,9 @@
 {
     "compilerOptions": {
-      "lib": ["ES2024", "DOM"],
-      "target": "ES2024",
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
+      "lib": ["ES2022"],
+      "target": "ES2022",
+      "module": "esnext",
+      "moduleResolution": "bundler",
       "outDir": "./dist/",
       "declarationDir": "./dist/types",
       "strict": true,
@@ -14,7 +14,8 @@
       "allowJs": true,
       "declaration": true,
       "declarationMap": true,
-      "allowSyntheticDefaultImports": true
+      "allowSyntheticDefaultImports": true,
+      "removeComments": true
     },
     "files": ["./src/index.ts"]
   }

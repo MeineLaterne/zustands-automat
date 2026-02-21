@@ -10,6 +10,8 @@
 
 export type StateHandler<T> = (context: T) => void;
 
+export type TransitionGuard<T> = (context: T) => boolean;
+
 export interface TransitionConfig<T> {
   target: string;
   guard?: (context: T) => boolean;
@@ -17,6 +19,7 @@ export interface TransitionConfig<T> {
 
 export interface StateConfig<T> {
   id: string;
+  isInitialState?: boolean;
   onEnter?: StateHandler<T>;
   onStay?: StateHandler<T>;
   onExit?: StateHandler<T>;
@@ -26,7 +29,7 @@ export interface StateConfig<T> {
 
 export interface Transition<T> {
   target: State<T>;
-  guard?: (context: T) => boolean;
+  guard?: TransitionGuard<T>;
 }
 
 export class State<T> {
@@ -226,8 +229,7 @@ export class StateMachine<T> {
 export class StateMachineBuilder<T> {
   private machine: StateMachine<T>;
   private stateConfigs: StateConfig<T>[] = [];
-  private initialStateId?: string;
-
+  
   constructor(context: T) {
     this.machine = new StateMachine<T>(context);
   }
@@ -236,15 +238,14 @@ export class StateMachineBuilder<T> {
     this.stateConfigs = configs;
     return this;
   }
-
-  initialState(stateId: string): StateMachineBuilder<T> {
-    this.initialStateId = stateId;
-    return this;
-  }
-
+  
   build(): StateMachine<T> {
+    let initialStateId;
     // Build states recursively
     this.stateConfigs.forEach(config => {
+      if (config.isInitialState) {
+        initialStateId = config.id;
+      }
       this.buildStateFromConfig(config, this.machine);
     });
 
@@ -252,9 +253,9 @@ export class StateMachineBuilder<T> {
     this.machine.init();
 
     // Set initial state
-    if (this.initialStateId) {
-      this.machine.setInitialState(this.initialStateId);
-      this.machine.setCurrentState(this.machine.getStateById(this.initialStateId)!);
+    if (initialStateId) {
+      this.machine.setInitialState(initialStateId);
+      this.machine.setCurrentState(this.machine.getStateById(initialStateId)!);
     }
 
     return this.machine;
@@ -268,14 +269,18 @@ export class StateMachineBuilder<T> {
       nestedMachine = new StateMachine<T>(this.machine.context);
       
       // Build nested states
+      let initialStateId;
       config.states.forEach(nestedConfig => {
+        if (nestedConfig.isInitialState) {
+          initialStateId = nestedConfig.id;
+        }
         this.buildStateFromConfig(nestedConfig, nestedMachine!);
       });
 
-      // Set first nested state as initial state by default
-      const firstNestedState = nestedMachine.states.values().next().value;
-      if (firstNestedState) {
-        nestedMachine.initialState = firstNestedState;
+      // Set initial nested state
+      if (initialStateId) {
+        nestedMachine.setInitialState(initialStateId);
+        nestedMachine.setCurrentState(nestedMachine.getStateById(initialStateId)!);
       }
     }
 

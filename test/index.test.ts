@@ -19,9 +19,9 @@ describe('StateMachineBuilder', () => {
   it('Should build - One State', () => {
     const sm = new StateMachineBuilder(testContext)
       .states([{
-        id: 'test_01'
+        id: 'test_01',
+        isInitialState: true,
       }])
-      .initialState('test_01')
       .build();
 
     assert.strictEqual('test_01', sm.getCurrentState()?.id);
@@ -32,6 +32,7 @@ describe('StateMachineBuilder', () => {
       .states([
         {
           id: 'test_01',
+          isInitialState: true,
           transitions: [
             { target: 'test_02', guard: (ctx) => ctx.getTrue() }
           ]
@@ -40,7 +41,6 @@ describe('StateMachineBuilder', () => {
           id: 'test_02'
         }
       ])
-      .initialState('test_01')
       .build();
 
     assert.strictEqual('test_01', sm.getCurrentState()?.id);
@@ -51,16 +51,21 @@ describe('StateMachineBuilder', () => {
   });
 
   it('Should build - Nested State Machine', () => {
+    
+    testContext.mutableState = false;
+    
     const sm = new StateMachineBuilder(testContext)
       .states([
         {
           id: 'test_01',
+          isInitialState: true,
           transitions: [
             { target: 'test_02', guard: (ctx) => ctx.mutableState === true, }
           ],
           states: [
             {
               id: 'nested_01',
+              isInitialState: true,
               transitions: [{
                 target: 'nested_02',
                 guard: (ctx) => ctx.getTrue(),
@@ -78,13 +83,12 @@ describe('StateMachineBuilder', () => {
           id: 'test_02'
         }
       ])
-      .initialState('test_01')
       .build();
 
     const state = sm.getCurrentState();
     assert.notEqual(state?.nestedStateMachine, undefined);
     assert.notEqual(state?.nestedStateMachine, null);
-    
+
     assert.strictEqual('test_01', sm.getCurrentState()?.id);
     assert.strictEqual('nested_01', state?.nestedStateMachine?.getCurrentState()?.id);
 

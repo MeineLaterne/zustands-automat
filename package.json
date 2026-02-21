@@ -1,10 +1,11 @@
 {
   "name": "statemachine",
-  "version": "0.0.1",
+  "version": "0.0.4",
   "description": "Declarative API for building finite state machines",
   "type": "module",
-  "types": "./dist/index.d.ts",
-  "main": "./dist/index.ts",
+  "types": "./dist/types/index.d.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "files": [
     "dist/**/*"
   ],
